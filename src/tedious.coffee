@@ -76,7 +76,7 @@ getMssqlType = (type, length) ->
 			if length is 4 then return TYPES.Int
 			if length is 2 then return TYPES.SmallInt
 			return TYPES.TinyInt
-			
+
 		when tds.TYPES.BigInt then return TYPES.BigInt
 		when tds.TYPES.TinyInt then return TYPES.TinyInt
 		when tds.TYPES.SmallInt then return TYPES.SmallInt
@@ -85,13 +85,13 @@ getMssqlType = (type, length) ->
 		when tds.TYPES.FloatN
 			if length is 8 then return TYPES.FloatN
 			return TYPES.Real
-		
+
 		when tds.TYPES.Real then return TYPES.Real
 		when tds.TYPES.Money then return TYPES.Money
 		when tds.TYPES.MoneyN
 			if length is 8 then return TYPES.Money
 			return TYPES.SmallMoney
-			
+
 		when tds.TYPES.SmallMoney then return TYPES.SmallMoney
 		when tds.TYPES.Numeric, tds.TYPES.NumericN then return TYPES.Numeric
 		when tds.TYPES.Decimal, tds.TYPES.DecimalN then return TYPES.Decimal
@@ -99,7 +99,7 @@ getMssqlType = (type, length) ->
 		when tds.TYPES.DateTimeN
 			if length is 8 then return TYPES.DateTime
 			return TYPES.SmallDateTime
-		
+
 		when tds.TYPES.TimeN then return TYPES.Time
 		when tds.TYPES.DateN then return TYPES.Date
 		when tds.TYPES.DateTime2N then return TYPES.DateTime2
@@ -139,10 +139,10 @@ createColumns = (metadata) ->
 				database: column.udtInfo.dbname
 				schema: column.udtInfo.owningSchema
 				assembly: column.udtInfo.assemblyName
-			
+
 			if DECLARATIONS[column.udtInfo.typeName]
 				out[column.colName].type = DECLARATIONS[column.udtInfo.typeName]
-	
+
 	out
 
 ###
@@ -153,10 +153,10 @@ valueCorrection = (value, metadata) ->
 	if metadata.type is tds.TYPES.UDT and value?
 		if UDT[metadata.udtInfo.typeName]
 			UDT[metadata.udtInfo.typeName] value
-			
+
 		else
 			value
-		
+
 	else
 		value
 
@@ -171,7 +171,7 @@ parameterCorrection = (value) ->
 			schema: value.schema
 			columns: []
 			rows: value.rows
-			
+
 		for col in value.columns
 			tvp.columns.push
 				name: col.name
@@ -179,9 +179,9 @@ parameterCorrection = (value) ->
 				length: col.length
 				scale: col.scale
 				precision: col.precision
-			
+
 		tvp
-			
+
 	else
 		value
 
@@ -192,7 +192,7 @@ parameterCorrection = (value) ->
 module.exports = (Connection, Transaction, Request, ConnectionError, TransactionError, RequestError) ->
 	class TediousConnection extends Connection
 		pool: null
-		
+
 		connect: (config, callback) ->
 			cfg =
 				userName: config.user
@@ -200,7 +200,7 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 				server: config.server
 				options: config.options
 				domain: config.domain
-			
+
 			cfg.options.database ?= config.database
 			cfg.options.port ?= config.port
 			cfg.options.connectTimeout ?= config.connectionTimeout ? config.timeout ? 15000 # config.timeout deprecated in 0.6.0
@@ -210,14 +210,14 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 			cfg.options.rowCollectionOnRequestCompletion = false
 			cfg.options.useColumnNames = false
 			cfg.options.appName ?= 'node-mssql'
-			
+
 			# tedious always connect via tcp when port is specified
 			if cfg.options.instanceName then delete cfg.options.port
-			
+
 			if isNaN cfg.options.requestTimeout then cfg.options.requestTimeout = 15000
 			if cfg.options.requestTimeout is Infinity then cfg.options.requestTimeout = 0
 			if cfg.options.requestTimeout < 0 then cfg.options.requestTimeout = 0
-			
+
 			if config.debug
 				cfg.options.debug =
 					packet: true
@@ -237,34 +237,34 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 						if err then err = ConnectionError err
 						if err then return callback err, null # there must be a second argument null
 						callback null, c
-					
+
 					c.on 'error', (err) =>
-						if err.code is 'ESOCKET'
-							c.hasError = true
-							return
+						# if err.code is 'ESOCKET'
+						# 	c.hasError = true
+						# 	return
 
 						@emit 'error', err
-					
+
 					if config.debug
 						c.on 'debug', (msg) => @_debug msg
 
 				validate: (c) ->
 					c? and not c.closed and not c.hasError
-				
+
 				destroy: (c) ->
 					c?.close()
-					
+
 					# there might be some unemitted events
 					setTimeout ->
 						c?.removeAllListeners()
 					, 500
-			
+
 			if config.pool
 				for key, value of config.pool
 					cfg_pool[key] = value
 
 			@pool = Pool cfg_pool, cfg
-			
+
 			#create one testing connection to check if everything is ok
 			@pool.acquire (err, connection) =>
 				if err
@@ -275,9 +275,9 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 				else
 					# and release it immediately
 					@pool.release connection
-				
+
 				callback err
-		
+
 		close: (callback) ->
 			unless @pool then return callback null
 
@@ -285,79 +285,79 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 				@pool?.destroyAllNow()
 				@pool = null
 				callback null
-	
+
 	class TediousTransaction extends Transaction
 		_abort: ->
 			if not @_rollbackRequested
 				# transaction interrupted because of XACT_ABORT
-				
+
 				pc = @_pooledConnection
 				setImmediate =>
 					# defer releasing so connection can switch from SentClientRequest to LoggedIn state
 					@connection.pool.release pc
-					
+
 				@_pooledConnection.removeListener 'rollbackTransaction', @_abort
 				@_pooledConnection = null
 				@_aborted = true
-				
+
 				@emit 'rollback', true
-			
+
 		begin: (callback) ->
 			@_aborted = false
 			@_rollbackRequested = false
-			
+
 			@connection.pool.acquire (err, connection) =>
 				if err then return callback err
-				
+
 				@_pooledConnection = connection
 				@_pooledConnection.on 'rollbackTransaction', @_abort
-					
+
 				connection.beginTransaction bindDomain (err) =>
 					if err then err = TransactionError err
 					callback err
-				
+
 				, @name, @isolationLevel
-			
+
 		commit: (callback) ->
 			@_pooledConnection.commitTransaction bindDomain (err) =>
 				if err then err = TransactionError err
-				
+
 				@_pooledConnection.removeListener 'rollbackTransaction', @_abort
 				@connection.pool.release @_pooledConnection
 				@_pooledConnection = null
-				
+
 				callback err
 
 		rollback: (callback) ->
 			@_rollbackRequested = true
 			@_pooledConnection.rollbackTransaction bindDomain (err) =>
 				if err then err = TransactionError err
-				
+
 				@_pooledConnection.removeListener 'rollbackTransaction', @_abort
 				@connection.pool.release @_pooledConnection
 				@_pooledConnection = null
-				
+
 				callback err
-		
+
 	class TediousRequest extends Request
 		###
 		Execute specified sql batch.
 		###
-		
+
 		batch: (batch, callback) ->
 			@_isBatch = true
 			TediousRequest::query.call @, batch, callback
-		
+
 		###
 		Bulk load.
 		###
-		
+
 		bulk: (table, callback) ->
 			table._makeBulk()
-			
+
 			unless table.name
 				process.nextTick -> callback RequestError("Table name must be specified for bulk insert.", "ENAME")
-				
+
 			if table.name.charAt(0) is '@'
 				process.nextTick -> callback RequestError("You can't use table variables for bulk insert.", "ENAME")
 
@@ -372,21 +372,21 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 
 				if @stream
 					@emit 'error', e
-				
+
 				else
 					if doReturn and not hasReturned
 						if connection?
 							for event, handler of errorHandlers
 								connection.removeListener event, handler
-								
+
 							@_release connection
-							
+
 						hasReturned = true
 						callback?(e)
 
 				# we must collect errors even in stream mode
 				errors.push e
-			
+
 			handleInfo = (msg) =>
 				@emit 'info',
 					message: msg.message
@@ -405,11 +405,11 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 						if @verbose then @_log "---------- canceling ----------"
 						@_release connection
 						return callback? new RequestError "Canceled.", 'ECANCEL'
-					
+
 					@_cancel = =>
 						if @verbose then @_log "---------- canceling ----------"
 						connection.cancel()
-					
+
 					# attach handler to handle multiple error messages
 					errorHandlers['infoMessage'] = handleInfo
 					errorHandlers['errorMessage'] = handleError.bind(undefined, false, connection)
@@ -422,63 +422,63 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 						# to make sure we handle no-sql errors as well
 						if err and err.message isnt errors[errors.length - 1]?.message
 							err = RequestError err, 'EREQUEST'
-							
+
 							if @stream
 								@emit 'error', err
-							
+
 							errors.push err
-						
+
 						# TODO ----
-						
-						if @verbose 
+
+						if @verbose
 							if errors.length
 								@_log "    error: #{error}" for error in errors
-							
+
 							elapsed = Date.now() - started
 							@_log " duration: #{elapsed}ms"
 							@_log "---------- completed ----------"
-			
+
 						@_cancel = null
-						
+
 						if errors.length and not @stream
 							error = errors.pop()
 							error.precedingErrors = errors
-						
+
 						if not hasReturned
 							for event, handler of errorHandlers
 								connection.removeListener event, handler
 							@_release connection
 							hasReturned = true
-						
+
 							if @stream
 								callback null, null
-						
+
 							else
 								callback? error, rowCount
-					
+
 					bulk = connection.newBulkLoad table.path, done
 
 					for col in table.columns
 						bulk.addColumn col.name, getTediousType(col.type), {nullable: col.nullable, length: col.length, scale: col.scale, precision: col.precision}
-					
+
 					for row in table.rows
 						bulk.addRow row
-					
+
 					if @verbose then @_log "---------- response -----------"
-					
+
 					if table.create
 						if table.temporary
 							objectid = "tempdb..[#{table.name}]"
 						else
 							objectid = table.path
-						
+
 						req = new tds.Request "if object_id('#{objectid.replace(/'/g, '\'\'')}') is null #{table.declare()}", (err) =>
 							if err then return done err
-							
+
 							connection.execBulkLoad bulk
-						
+
 						connection.execSqlBatch req
-							
+
 					else
 						connection.execBulkLoad bulk
 
@@ -504,24 +504,24 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 				err = new Error info.message
 				err.info = info
 				e = RequestError err, 'EREQUEST'
-				
+
 				if @stream
 					@emit 'error', e
-				
+
 				else
 					if doReturn and not hasReturned
 						if connection?
 							for event, handler of errorHandlers
 								connection.removeListener event, handler
-							
+
 							@_release connection
-							
+
 						hasReturned = true
 						callback? e
 
 				# we must collect errors even in stream mode
 				errors.push e
-			
+
 			handleInfo = (msg) =>
 				@emit 'info',
 					message: msg.message
@@ -531,7 +531,7 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 					lineNumber: msg.lineNumber
 					serverName: msg.serverName
 					procName: msg.procName
-			
+
 			@_acquire (err, connection) =>
 				unless err
 					if @verbose then @_log "---------- sql #{if @_isBatch then 'batch' else 'query'} ----------\n    #{if @_isBatch then 'batch' else 'query'}: #{command}"
@@ -540,11 +540,11 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 						if @verbose then @_log "---------- canceling ----------"
 						@_release connection
 						return callback? new RequestError "Canceled.", 'ECANCEL'
-					
+
 					@_cancel = =>
 						if @verbose then @_log "---------- canceling ----------"
 						connection.cancel()
-					
+
 					# attach handler to handle multiple error messages
 					errorHandlers['infoMessage'] = handleInfo
 					errorHandlers['errorMessage'] = handleError.bind(undefined, false, connection)
@@ -552,72 +552,72 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 					connection.on 'infoMessage', errorHandlers['infoMessage']
 					connection.on 'errorMessage', errorHandlers['errorMessage']
 					connection.on 'error',        errorHandlers['error']
-					
+
 					req = new tds.Request command, bindDomain (err) =>
 						# to make sure we handle no-sql errors as well
 						if err and err.message isnt errors[errors.length - 1]?.message
 							err = RequestError err, 'EREQUEST'
-							
+
 							if @stream
 								@emit 'error', err
-							
+
 							errors.push err
-						
+
 						# process batch outputs
 						if batchHasOutput
 							unless @stream
 								batchLastRow = recordsets.pop()[0]
-							
+
 							for name, value of batchLastRow when name isnt '___return___'
 								if @verbose
 									if value is tds.TYPES.Null
 										@_log "   output: @#{name}, null"
 									else
 										@_log "   output: @#{name}, #{@parameters[name].type.declaration.toLowerCase()}, #{value}"
-								
+
 								@parameters[name].value = if value is tds.TYPES.Null then null else value
-						
-						if @verbose 
+
+						if @verbose
 							if errors.length
 								@_log "    error: #{error}" for error in errors
-							
+
 							elapsed = Date.now() - started
 							@_log " duration: #{elapsed}ms"
 							@_log "---------- completed ----------"
 
 						@_cancel = null
-						
+
 						if errors.length and not @stream
 							error = errors.pop()
 							error.precedingErrors = errors
-						
+
 						if not hasReturned
 							for event, handler of errorHandlers
 								connection.removeListener event, handler
-							
+
 							@_release connection
 							hasReturned = true
 
 							if @stream
 								callback null, null
-							
+
 							else
 								callback? error, if @multiple then recordsets else recordsets[0]
-					
+
 					req.on 'columnMetadata', (metadata) =>
 						columns = createColumns metadata
-						
+
 						isChunkedRecordset = false
 						if metadata.length is 1 and metadata[0].colName in [JSON_COLUMN_ID, XML_COLUMN_ID]
 							isChunkedRecordset = true
 							chunksBuffer = []
-						
+
 						if @stream
 							if @_isBatch
 								# don't stream recordset with output values in batches
 								unless columns["___return___"]?
 									@emit 'recordset', columns
-							
+
 							else
 								@emit 'recordset', columns
 
@@ -626,7 +626,7 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 						if Object.keys(columns).length is 0
 							@rowsAffected += rowCount if rowCount > 0
 							return
-						
+
 						if isChunkedRecordset
 							if columns[JSON_COLUMN_ID] and @connection.config.parseJSON is true
 								try
@@ -634,121 +634,121 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 								catch ex
 									row = null
 									ex = RequestError new Error("Failed to parse incoming JSON. #{ex.message}"), 'EJSON'
-									
+
 									if @stream
 										@emit 'error', ex
-									
+
 									# we must collect errors even in stream mode
 									errors.push ex
-							
+
 							else
 								row = {}
 								row[Object.keys(columns)[0]] = chunksBuffer.join ''
-							
+
 							chunksBuffer = null
 
 							if @verbose
 								@_log util.inspect row
 								@_log "---------- --------------------"
-							
+
 							if @stream
 								@emit 'row', row
-								
+
 							else
 								recordset.push row
 
 						unless @stream
 							# all rows of current recordset loaded
-							Object.defineProperty recordset, 'columns', 
+							Object.defineProperty recordset, 'columns',
 								enumerable: false
 								value: columns
-								
-							Object.defineProperty recordset, 'toTable', 
+
+							Object.defineProperty recordset, 'toTable',
 								enumerable: false
 								value: -> Table.fromRecordset @
-								
+
 							recordsets.push recordset
-							
+
 						recordset = []
 						columns = {}
-					
+
 					req.on 'doneInProc', doneHandler # doneInProc handlers are used in both queries and batches
 					req.on 'done', doneHandler # done handlers are used in batches
-					
+
 					req.on 'returnValue', (parameterName, value, metadata) =>
 						if @verbose
 							if value is tds.TYPES.Null
 								@_log "   output: @#{parameterName}, null"
 							else
 								@_log "   output: @#{parameterName}, #{@parameters[parameterName].type.declaration.toLowerCase()}, #{value}"
-								
+
 						@parameters[parameterName].value = if value is tds.TYPES.Null then null else value
-					
+
 					req.on 'row', (columns) =>
 						unless recordset
 							recordset = []
-						
+
 						if isChunkedRecordset
 							chunksBuffer.push columns[0].value
-						
+
 						else
 							row = {}
 							for col in columns
 								col.value = valueCorrection col.value, col.metadata
-								
+
 								exi = row[col.metadata.colName]
 								if exi?
 									if exi instanceof Array
 										exi.push col.value
-										
+
 									else
 										row[col.metadata.colName] = [exi, col.value]
-								
+
 								else
 									row[col.metadata.colName] = col.value
-						
+
 							if @verbose
 								@_log util.inspect(row)
 								@_log "---------- --------------------"
-							
+
 							if @stream
 								if @_isBatch
 									# dont stream recordset with output values in batches
 									if row["___return___"]?
 										batchLastRow = row
-									
+
 									else
 										@emit 'row', row
-								
+
 								else
 									@emit 'row', row
-								
+
 							else
 								recordset.push row
-					
+
 					if @_isBatch
 						if Object.keys(@parameters).length
 							for name, param of @parameters
 								value = getTediousType(param.type).validate param.value
 								if value instanceof TypeError
 									value = new RequestError "Validation failed for parameter \'#{name}\'. #{value.message}", 'EPARAM'
-									
+
 									if @verbose
 										@_log "    error: #{value}"
 										@_log "---------- completed ----------"
-										
+
 									@_release connection
 									return callback? value
-									
+
 								param.value = value
-							
+
 							declarations = ("@#{name} #{declare(param.type, param)}" for name, param of @parameters)
 							assigns = ("@#{name} = #{cast(param.value, param.type, param)}" for name, param of @parameters)
 							selects = ("@#{name} as [#{name}]" for name, param of @parameters when param.io is 2)
 							batchHasOutput = selects.length > 0
-							
+
 							req.sqlTextOrProcedure = "declare #{declarations.join(', ')};select #{assigns.join(', ')};#{req.sqlTextOrProcedure};#{if batchHasOutput then ('select 1 as [___return___], '+ selects.join(', ')) else ''}"
-					
+
 					else
 						for name, param of @parameters
 							if @verbose
@@ -756,23 +756,23 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 									@_log "   #{if param.io is 1 then " input" else "output"}: @#{param.name}, null"
 								else
 									@_log "   #{if param.io is 1 then " input" else "output"}: @#{param.name}, #{param.type.declaration.toLowerCase()}, #{param.value}"
-							
+
 							if param.io is 1
 								req.addParameter param.name, getTediousType(param.type), parameterCorrection(param.value), {length: param.length, scale: param.scale, precision: param.precision}
 							else
 								req.addOutputParameter param.name, getTediousType(param.type), parameterCorrection(param.value), {length: param.length, scale: param.scale, precision: param.precision}
-					
+
 					if @verbose then @_log "---------- response -----------"
 					connection[if @_isBatch then 'execSqlBatch' else 'execSql'] req
-				
+
 				else
 					if connection then @_release connection
 					callback? err
-					
+
 		###
 		Execute stored procedure with specified parameters.
 		###
-		
+
 		execute: (procedure, callback) ->
 			columns = {}
 			recordset = []
@@ -788,37 +788,37 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 				err = new Error info.message
 				err.info = info
 				e = RequestError err, 'EREQUEST'
-				
+
 				if @stream
 					@emit 'error', e
-				
+
 				else
 					if doReturn and not hasReturned
 						if connection?
 							for event, handler of errorHandlers
 								connection.removeListener event, handler
-							
+
 							@_release connection
-						
+
 						hasReturned = true
 						callback? e
-					
+
 				# we must collect errors even in stream mode
 				errors.push e
 
 			@_acquire (err, connection) =>
 				unless err
 					if @verbose then @_log "---------- sql execute --------\n     proc: #{procedure}"
-					
+
 					if @canceled
 						if @verbose then @_log "---------- canceling ----------"
 						@_release connection
 						return callback? new RequestError "Canceled.", 'ECANCEL'
-					
+
 					@_cancel = =>
 						if @verbose then @_log "---------- canceling ----------"
 						connection.cancel()
-					
+
 					# attach handler to handle multiple error messages
 					errorHandlers['errorMessage'] = handleError.bind(undefined, false, connection)
 					errorHandlers['error']        = handleError.bind(undefined, true, connection)
@@ -829,27 +829,27 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 						# to make sure we handle no-sql errors as well
 						if err and err.message isnt errors[errors.length - 1]?.message
 							err = RequestError err, 'EREQUEST'
-							
+
 							if @stream
 								@emit 'error', err
-							
+
 							errors.push err
-						
-						if @verbose 
+
+						if @verbose
 							if errors.length
 								@_log "    error: #{error}" for error in errors
-							
+
 							elapsed = Date.now() - started
 							@_log "   return: #{returnValue}"
 							@_log " duration: #{elapsed}ms"
 							@_log "---------- completed ----------"
-						
+
 						@_cancel = null
-						
+
 						if errors.length and not @stream
 							error = errors.pop()
 							error.precedingErrors = errors
-						
+
 						if not hasReturned
 							for event, handler of errorHandlers
 								connection.removeListener event, handler
@@ -862,57 +862,57 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 							else
 								recordsets.returnValue = returnValue
 								callback? error, recordsets, returnValue
-					
+
 					req.on 'columnMetadata', (metadata) =>
 						columns = createColumns metadata
-						
+
 						isChunkedRecordset = false
 						if metadata.length is 1 and metadata[0].colName in [JSON_COLUMN_ID, XML_COLUMN_ID]
 							isChunkedRecordset = true
 							chunksBuffer = []
-						
+
 						if @stream
 							@emit 'recordset', columns
-					
+
 					req.on 'row', (columns) =>
 						unless recordset
 							recordset = []
-						
+
 						if isChunkedRecordset
 							chunksBuffer.push columns[0].value
-						
+
 						else
 							row = {}
 							for col in columns
 								col.value = valueCorrection col.value, col.metadata
-								
+
 								exi = row[col.metadata.colName]
 								if exi?
 									if exi instanceof Array
 										exi.push col.value
-										
+
 									else
 										row[col.metadata.colName] = [exi, col.value]
-								
+
 								else
 									row[col.metadata.colName] = col.value
-						
+
 							if @verbose
 								@_log util.inspect(row)
 								@_log "---------- --------------------"
-							
+
 							if @stream
 								@emit 'row', row
-							
+
 							else
 								recordset.push row
-					
+
 					req.on 'doneInProc', (rowCount, more) =>
 						# filter empty recordsets when NOCOUNT is OFF
 						if Object.keys(columns).length is 0
 							@rowsAffected += rowCount if rowCount > 0
 							return
-						
+
 						if isChunkedRecordset
 							if columns[JSON_COLUMN_ID] and @connection.config.parseJSON is true
 								try
@@ -920,63 +920,63 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 								catch ex
 									row = null
 									ex = RequestError new Error("Failed to parse incoming JSON. #{ex.message}"), 'EJSON'
-									
+
 									if @stream
 										@emit 'error', ex
-									
+
 									# we must collect errors even in stream mode
 									errors.push ex
-							
+
 							else
 								row = {}
 								row[Object.keys(columns)[0]] = chunksBuffer.join ''
-							
+
 							chunksBuffer = null
 
 							if @verbose
 								@_log util.inspect row
 								@_log "---------- --------------------"
-							
+
 							if @stream
 								@emit 'row', row
-								
+
 							else
 								recordset.push row
-						
+
 						unless @stream
 							# all rows of current recordset loaded
-							Object.defineProperty recordset, 'columns', 
+							Object.defineProperty recordset, 'columns',
 								enumerable: false
 								value: columns
-								
-							Object.defineProperty recordset, 'toTable', 
+
+							Object.defineProperty recordset, 'toTable',
 								enumerable: false
 								value: -> Table.fromRecordset @
-							
+
 							recordsets.push recordset
-							
+
 						recordset = []
 						columns = {}
-					
+
 					req.on 'doneProc', (rowCount, more, returnStatus) =>
 						returnValue = returnStatus
-					
+
 					req.on 'returnValue', (parameterName, value, metadata) =>
 						if @verbose
 							if value is tds.TYPES.Null
 								@_log "   output: @#{parameterName}, null"
 							else
 								@_log "   output: @#{parameterName}, #{@parameters[parameterName].type.declaration.toLowerCase()}, #{value}"
-								
+
 						@parameters[parameterName].value = if value is tds.TYPES.Null then null else value
-					
+
 					for name, param of @parameters
 						if @verbose
 							if param.value is tds.TYPES.Null
 								@_log "   #{if param.io is 1 then " input" else "output"}: @#{param.name}, null"
 							else
 								@_log "   #{if param.io is 1 then " input" else "output"}: @#{param.name}, #{param.type.declaration.toLowerCase()}, #{param.value}"
-						
+
 						if param.io is 1
 							req.addParameter param.name, getTediousType(param.type), parameterCorrection(param.value), {length: param.length, scale: param.scale, precision: param.precision}
 						else
@@ -984,19 +984,19 @@ module.exports = (Connection, Transaction, Request, ConnectionError, Transaction
 
 					if @verbose then @_log "---------- response -----------"
 					connection.callProcedure req
-				
+
 				else
 					if connection then @_release connection
 					callback? err
-				
+
 		###
 		Cancel currently executed request.
 		###
-		
+
 		cancel: ->
 			if @_cancel then return @_cancel()
 			true
-		
+
 	return {
 		Connection: TediousConnection
 		Transaction: TediousTransaction
